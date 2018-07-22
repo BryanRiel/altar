@@ -17,7 +17,7 @@
 #include "exceptions.h"
 #include "metadata.h"
 #include "dbeta.h"
-
+#include "transfer.h"
 
 // put everything in my private namespace
 namespace altar {
@@ -35,6 +35,12 @@ namespace altar {
             // annealing schedule
             { cov__name__, cov, METH_VARARGS, cov__doc__},
             { dbeta__name__, dbeta, METH_VARARGS, dbeta__doc__},
+
+            // copy to/from gsl and numpy
+            { copy_gsl_to_numpy__name__, copy_gsl_to_numpy,
+              METH_VARARGS, copy_gsl_to_numpy__doc__ },
+            { copy_numpy_to_gsl__name__, copy_numpy_to_gsl,
+              METH_VARARGS, copy_numpy_to_gsl__doc__ },
 
             // sentinel
             {0, 0, 0, 0}

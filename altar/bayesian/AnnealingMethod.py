@@ -39,7 +39,14 @@ class AnnealingMethod:
         """
         Initialize me and my parts given an {application} context
         """
-        # by default, nothing to do
+        # borrow the canonical journal channels from the application
+        self.info = application.info
+        self.warning = application.warning
+        self.error = application.error
+        self.debug = application.debug
+        self.firewall = application.firewall
+
+        # all done
         return self
 
 
@@ -65,6 +72,8 @@ class AnnealingMethod:
         """
         Notification that we are at the beginning of an update
         """
+        # notify the model
+        annealer.model.top(step=self.step)
         # ask my step to render itself
         self.step.print(channel=annealer.info)
         # all done
@@ -85,9 +94,9 @@ class AnnealingMethod:
         return self
 
 
-    def resample(self, annealer):
+    def walk(self, annealer):
         """
-        Re-sample the posterior distribution
+        Explore configuration space by walking the Markov chains
         """
         # get the sampler
         sampler = annealer.sampler
@@ -97,7 +106,7 @@ class AnnealingMethod:
         return stats
 
 
-    def equilibrate(self, annealer, statistics):
+    def resample(self, annealer, statistics):
         """
         Analyze the acceptance statistics and take the problem state to the end of the
         annealing step
@@ -105,7 +114,7 @@ class AnnealingMethod:
         # get the sampler
         sampler = annealer.sampler
         # ask it to adjust the sample statistics
-        sampler.equilibrate(annealer=annealer, statistics=statistics)
+        sampler.resample(annealer=annealer, statistics=statistics)
         # all done
         return self
 
@@ -114,6 +123,8 @@ class AnnealingMethod:
         """
         Notification that we are at the bottom of an update
         """
+        # notify the model
+        annealer.model.bottom(step=self.step)
         # all done
         return self
 

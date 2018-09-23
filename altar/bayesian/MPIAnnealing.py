@@ -30,6 +30,9 @@ class MPIAnnealing(AnnealingMethod):
         """
         Initialize me and my parts given an {application} context
         """
+        # chain up
+        super().initialize(application=application)
+
         # ask the application context for the rng component
         rng = application.rng
         # make a rank dependent seed
@@ -37,8 +40,13 @@ class MPIAnnealing(AnnealingMethod):
         # seed the rng
         rng.rng.seed(seed=seed)
 
-        # chain up
-        return super().initialize(application=application)
+        # grab a channel
+        channel = self.debug
+        # show me
+        channel.log(f"initializing worker {mpi.world.rank} of {mpi.world.size}")
+
+        # all done
+        return self
 
 
     def start(self, annealer):
@@ -59,9 +67,9 @@ class MPIAnnealing(AnnealingMethod):
 
     def top(self, annealer):
         """
-        Notification that we are at the beginning of an update
+        Notification that we are at the beginning of a β update
         """
-        # if i am the manager task
+        # if i am the manager
         if self.rank == self.manager:
             # chain up
             return super().top(annealer=annealer)
@@ -73,7 +81,7 @@ class MPIAnnealing(AnnealingMethod):
         """
         Push my state forward along the cooling schedule
         """
-        # am I the boss?
+        # if I am the manager
         if self.rank == self.manager:
             # i have the global state; cool it
             super().cool(annealer=annealer)
@@ -81,21 +89,21 @@ class MPIAnnealing(AnnealingMethod):
         return self
 
 
-    def resample(self, annealer):
+    def walk(self, annealer):
         """
-        Re-sample the posterior pdf
+        Explore configuration space by walking the Markov chains
         """
         # partition and synchronize my state
         self.partition()
-        # everybody resamples the posterior
-        stats = self.worker.resample(annealer=annealer)
+        # all workers walk their chains
+        stats = self.worker.walk(annealer=annealer)
         # collect my state
         self.step = self.collect()
         # return the statistics
         return stats
 
 
-    def equilibrate(self, annealer, statistics):
+    def resample(self, annealer, statistics):
         """
         Analyze the acceptance statistics and take the problem state to the end of the
         annealing step
@@ -113,9 +121,21 @@ class MPIAnnealing(AnnealingMethod):
         # if I am the boss
         if self.rank == manager:
             # chain up
-            super().equilibrate(annealer=annealer, statistics=(accepted,rejected,unlikely))
+            super().resample(annealer=annealer, statistics=(accepted,rejected,unlikely))
 
         # all done
+        return self
+
+
+    def bottom(self, annealer):
+        """
+        Notification that we are at the end of a β update
+        """
+        # if i am the manager
+        if self.rank == self.manager:
+            # chain up
+            return super().bottom(annealer=annealer)
+        # otherwise, do nothing
         return self
 
 
@@ -123,7 +143,7 @@ class MPIAnnealing(AnnealingMethod):
         """
         Shut down the annealing process
         """
-        # if i am the manager task
+        # if i am the manager
         if self.rank == self.manager:
             # chain up
             return super().finish(annealer=annealer)
@@ -155,9 +175,6 @@ class MPIAnnealing(AnnealingMethod):
         workers = comm.sum(destination=self.manager, item=worker.workers)
         # the result is meaningful only on the manager task
         self.workers = int(workers) if self.rank == self.manager else None
-
-        # make a channel
-        self.info = journal.info("altar.mpi")
 
         # all done
         return

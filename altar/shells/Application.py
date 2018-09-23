@@ -39,7 +39,7 @@ class Application(altar.application, family="altar.shells.application"):
         """
         The main entry point
         """
-        # N.B.: the initialization phase must be respectful if the interdependencies of these
+        # N.B.: the initialization phase must be respectful of the interdependencies of these
         # components; e.g., both {controller} and {model} expect an initialized {rng}
 
         # initialize the job parameters
@@ -69,6 +69,28 @@ class Application(altar.application, family="altar.shells.application"):
         context["altar"] = altar # my package
         # and chain up
         return super().pyre_interactiveSessionContext(context=context)
+
+
+    # machine layout adjustments for MPI runs
+    def pyre_mpi(self):
+        """
+        Transfer my {job} settings to the MPI shell
+        """
+        # get my shell
+        shell = self.shell
+        # if the programming model is not {MPI}
+        if shell.model != "mpi":
+            # something really bad has happened
+            self.firewall.log(f"the {pyre_mpi} hook with model={shell.model}")
+
+        # get my job parameters
+        job = self.job
+        # transfer the job settings
+        shell.hosts = job.hosts
+        shell.tasks = job.tasks
+
+        # all done
+        return self
 
 
 # end of file

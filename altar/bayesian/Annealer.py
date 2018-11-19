@@ -12,6 +12,8 @@
 import altar
 # my protocol
 from .Controller import Controller as controller
+# my event dispatcher
+from .Notifier import Notifier
 
 
 # my declaration
@@ -29,8 +31,8 @@ class Annealer(altar.component, family="altar.controllers.annealer", implements=
     scheduler = altar.bayesian.scheduler()
     scheduler.doc = "the generator of the annealing schedule"
 
-    monitor = altar.simulations.monitor()
-    monitor.doc = "the handler of simulation notifications"
+    dispatcher = altar.simulations.dispatcher(default=Notifier)
+    dispatcher.doc = "the event dispatcher that activates the registered handlers"
 
     archiver = altar.simulations.archiver()
     archiver.doc = "the archiver of simulation state"
@@ -42,23 +44,32 @@ class Annealer(altar.component, family="altar.controllers.annealer", implements=
         """
         Initialize me and my parts given an {application} context
         """
-        # deduce my annealing method
-        self.worker = self.deduceAnnealingMethod(job=application.job)
-        # and initialize it
-        self.worker.initialize(application=application)
-
-        # initialize my other parts
-        self.sampler.initialize(application=application)
-        self.scheduler.initialize(application=application)
-        self.monitor.initialize(application=application)
-        self.archiver.initialize(application=application)
-
         # borrow the canonical journal channels from the application
         self.info = application.info
         self.warning = application.warning
         self.error = application.error
         self.debug = application.debug
         self.firewall = application.firewall
+
+        # initialize the dispatcher
+        self.dispatcher.initialize(application=application)
+
+        # initialize my other parts
+        self.sampler.initialize(application=application)
+        self.scheduler.initialize(application=application)
+        self.archiver.initialize(application=application)
+
+        # deduce my annealing method
+        self.worker = self.deduceAnnealingMethod(job=application.job)
+        # and initialize it
+        self.worker.initialize(application=application)
+
+        # go through the registered monitors
+        for monitor in application.monitors.values():
+            # initialize them
+            monitor.initialize(application=application)
+            # and register them with the {dispatcher}
+            self.dispatcher.register(monitor=monitor)
 
         # all done
         return self
@@ -75,25 +86,47 @@ class Annealer(altar.component, family="altar.controllers.annealer", implements=
         tolerance = model.job.tolerance
         # get my worker
         worker = self.worker
+        # and my dispatcher
+        dispatcher = self.dispatcher
 
+        # notify all interested parties that the simulation is about to start
+        dispatcher.notify(event=dispatcher.start, controller=self)
         # start the process
         worker.start(annealer=self)
 
         # iterate until β is sufficiently close to one
         while worker.beta + tolerance < 1:
-            # notify the worker we are at the top of the current step
+            # notify that we are at the top of the current step
+            dispatcher.notify(event=dispatcher.betaStart, controller=self)
+            # let the worker know
             worker.top(annealer=self)
+
             # compute a new temperature
             worker.cool(annealer=self)
+
+            # notify we are about to walk the chains
+            dispatcher.notify(event=dispatcher.walkChainsStart, controller=self)
             # walk the chains
             statistics = worker.walk(annealer=self)
+            # notify we are done walking the chains
+            dispatcher.notify(event=dispatcher.walkChainsFinish, controller=self)
+
+            # notify we are about to resample
+            dispatcher.notify(event=dispatcher.resampleStart, controller=self)
             # resample
             worker.resample(annealer=self, statistics=statistics)
+            # notify we are done resampling
+            dispatcher.notify(event=dispatcher.resampleFinish, controller=self)
+
             # notify the worker we are at the bottom of the current step
             worker.bottom(annealer=self)
+            # and dispatch the matching event
+            dispatcher.notify(event=dispatcher.betaFinish, controller=self)
 
-        # finish up
+        # and finish up
         worker.finish(annealer=self)
+        # notify all interested parties that the simulation has finished
+        dispatcher.notify(event=dispatcher.finish, controller=self)
 
         # forget the model
         self.model = None
